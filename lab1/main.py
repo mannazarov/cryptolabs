@@ -6,16 +6,8 @@ from struct import pack
 from Crypto.Util.Padding import pad, unpad
 
 
-# сделать класс генераторов (модуль)
-# сделать класс тестов (модуль)
-
-# раскидать все по файлам
-# для каждой функции сделать docstring
-# убрать лишние комментарии
-# залить на гитхаб
-
-
 BLOCK_SIZE = 16
+IV_SIZE = BLOCK_SIZE
 
 
 class Cipher:
@@ -31,6 +23,14 @@ class Cipher:
         :param key: байтовое представление ключа блочного шифра
         :type key: bytes
         """
+        if key is None:
+            raise ValueError("Ключ должен быть инициализирован")
+
+        if not isinstance(key, bytes):
+            raise ValueError("Ключ должна иметь тип bytes")
+
+        if len(key) == 0:
+            raise ValueError("Длина ключа должна быть больше нуля")
 
         self.key = key
         self.aes_object = AES.new(self.key, AES.MODE_ECB)
@@ -53,8 +53,8 @@ class Cipher:
         :param iv: вектор инициализации
         :type iv: bytes
         """
-        if len(iv) != BLOCK_SIZE:
-            raise ValueError(f"iv должен быть длиной в {BLOCK_SIZE} байт")
+        if len(iv) != IV_SIZE:
+            raise ValueError(f"iv должен быть длиной в {IV_SIZE} байт")
         self.iv = iv
 
     def encrypt(self, data, iv=None):
@@ -68,8 +68,17 @@ class Cipher:
         :rtype: bytes
         """
 
+        if data is None:
+            raise ValueError("Переменная data должна быть инициализирована")
+
+        if not isinstance(data, bytes):
+            raise ValueError("Переменная data должна иметь тип bytes")
+
+        if len(data) == 0:
+            raise ValueError("Данные для шифрования отсутствуют")
+
         if self.mode is None:
-            raise ValueError()
+            raise ValueError("Переменная mode должна быть инициализирована")
 
         if iv is not None:
             self.set_iv(iv)
@@ -92,12 +101,12 @@ class Cipher:
         :param is_final_block: флаг того, что передан последний блок шифруемого открытого текста
         :type is_final_block: bool
         :return: возвращает зашифрованный блок данных.
-        :rtype: str
+        :rtype: bytes
         """
 
         if self.mode == 'ECB':
             if is_final_block:
-                padded_data = self.pad(plain_text)
+                padded_data = Cipher.pad(plain_text)
                 if len(padded_data) == BLOCK_SIZE * 2:
                     enc_block1 = self.block_cipher_encrypt(padded_data[:BLOCK_SIZE])
                     enc_block2 = self.block_cipher_encrypt(padded_data[BLOCK_SIZE:])
@@ -147,19 +156,24 @@ class Cipher:
         elif self.mode == 'CTR':
             encrypted_iv = self.block_cipher_encrypt(self.iv)
             cipher_text = self.xor_bytes(plain_text, encrypted_iv[:len(plain_text)])
-            self.iv = Cipher.increment_last_8_bytes(self.iv)
+            self.iv = Cipher.increment_last_bytes(self.iv)
             return cipher_text
+
+        else:
+            raise ValueError(f"Переменная mode содержит недопустимое значение {self.mode}.\n"
+                             "Допустимые значения: ECB, CBC, CFB, OFB, CTR")
 
     def block_cipher_encrypt(self, plain_text):
         """
         Функция шифрования блока данных алгоритмом AES
-        :param plain_text: блок для шифрования 128 бит = 16 байт
+        :param plain_text: блок для шифрования BLOCK_SIZE байт
         :type plain_text: bytes
-        :return: возвращает зашифрованный блок данных. 16 байт
+        :return: возвращает зашифрованный блок данных. BLOCK_SIZE байт
+        :return: возвращает зашифрованный блок данных. BLOCK_SIZE байт
         :rtype: bytes
         """
         if len(plain_text) != BLOCK_SIZE:
-            raise ValueError("Block size must be exactly 16 bytes")
+            raise ValueError(f"Block size must be exactly {BLOCK_SIZE} bytes")
         cipher_text = self.aes_object.encrypt(plain_text)
         return cipher_text
 
@@ -173,6 +187,23 @@ class Cipher:
         :return: расшифрованная байтовая строка
         :rtype: bytes
         """
+        if cipher_text is None:
+            raise ValueError("Переменная cipher_text должна быть инициализирована")
+
+        if not isinstance(cipher_text, bytes):
+            raise ValueError("Переменная cipher_text должна иметь тип bytes")
+
+        if len(cipher_text) == 0:
+            raise ValueError("Данные для расшифрования отсутствуют")
+
+        if self.mode is None:
+            raise ValueError("Переменная mode должна быть инициализирована")
+
+        if self.mode not in ['ECB', 'CBC', 'CFB', 'OFB', 'CTR']:
+            raise ValueError('Допустимые значения режима шифрования: ECB, CBC, CFB, OFB, CTR')
+
+        if iv is not None:
+            self.set_iv(iv)
 
         self.set_iv(iv)
         blocks = [cipher_text[i:i + BLOCK_SIZE] for i in range(0, len(cipher_text), BLOCK_SIZE)]
@@ -225,20 +256,23 @@ class Cipher:
         elif self.mode == 'CTR':
             encrypted_iv = self.block_cipher_encrypt(self.iv)
             plain_text = self.xor_bytes(cipher_text, encrypted_iv[:len(cipher_text)])
-            self.iv = Cipher.increment_last_8_bytes(self.iv)
-
+            self.iv = Cipher.increment_last_bytes(self.iv)
             return plain_text
+
+        else:
+            raise ValueError(f"Переменная mode содержит недопустимое значение {self.mode}.\n"
+                             "Допустимые значения: ECB, CBC, CFB, OFB, CTR")
 
     def block_cipher_decrypt(self, cypher_text):
         """
         Функция расшифрования блока данных алгоритмом AES
-        :param cypher_text: блок для расшифрования 128 бит = 16 байт
+        :param cypher_text: блок для расшифрования BLOCK_SIZE байт
         :type cypher_text: bytes
-        :return: возвращает расшифрованный блок данных. 16 байт
+        :return: возвращает расшифрованный блок данных. BLOCK_SIZE байт
         :rtype: bytes
         """
         if len(cypher_text) != BLOCK_SIZE:
-            raise ValueError("Block size must be exactly 16 bytes")
+            raise ValueError(f"Block size must be exactly {BLOCK_SIZE} bytes")
         plain_text = self.aes_object.decrypt(cypher_text)
         return plain_text
 
@@ -286,35 +320,35 @@ class Cipher:
 
     @staticmethod
     def generate_iv():
-        return os.urandom(16)
+        return os.urandom(BLOCK_SIZE)
 
     @staticmethod
     def generate_iv_with_nonce():
         """
         Генерирует вектор инициализации (IV).
-        :return: Сгенерированный IV, который является комбинацией 8-байтового nonce и 8-байтового счетчика.
+        :return: Сгенерированный IV, который является комбинацией (BLOCK_SIZE//2)-байтового nonce и (BLOCK_SIZE//2)-байтового счетчика.
         :rtype: bytes
         """
-        nonce = os.urandom(8)
+        nonce = os.urandom(BLOCK_SIZE//2)
         counter = 0
         nonce_counter = nonce + pack('>Q', counter)
         return nonce_counter
 
     @staticmethod
-    def increment_last_8_bytes(byte_string):
+    def increment_last_bytes(byte_string):
         """
-        Увеличивает значение последних 8 байтов байтовой строки на 1.
+        Увеличивает значение последние BLOCK_SIZE//2 байтов байтовой строки на 1.
         :param byte_string: Байтовая строка.
         :type byte_string: bytes
-        :return: Новая байтовая строка с инкрементированными последними 8 байтами.
+        :return: Новая байтовая строка с инкрементированными последними BLOCK_SIZE//2 байтами.
         :rtype: bytes
         """
-        # Извлекаем последние 8 байтов как числа
-        counter = int.from_bytes(byte_string[-8:], byteorder='big')
+        # Извлекаем последние (BLOCK_SIZE//2) байтов как числа
+        counter = int.from_bytes(byte_string[-BLOCK_SIZE//2:], byteorder='big')
         counter += 1
         # Преобразуем числа обратно в байты
-        counter_bytes = counter.to_bytes(8, byteorder='big')
-        new_byte_string = byte_string[:-8] + counter_bytes
+        counter_bytes = counter.to_bytes(BLOCK_SIZE//2, byteorder='big')
+        new_byte_string = byte_string[:-BLOCK_SIZE//2] + counter_bytes
         return new_byte_string
 
 
